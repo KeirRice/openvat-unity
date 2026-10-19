@@ -4,6 +4,8 @@ using UnityEditor.SceneManagement;
 using System.IO;
 using System.Diagnostics;
 using System.Linq;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 public class OpenVATEditor : EditorWindow
 {
@@ -188,6 +190,18 @@ public class OpenVATEditor : EditorWindow
         material.SetVector("_maxValues", maxValues);
         material.SetFloat("_frames", frameCount);
         material.SetFloat("_resolutionY", AssetDatabase.LoadAssetAtPath<Texture2D>(vatTexturePath).height);
+
+        // Play the animation by default. The decoder advances 30 frames per second of Time at speed 1,
+        // so scale speed to the exported framerate. "animations" is keyed by clip name, which
+        // JsonUtility cannot deserialize, so read the first clip's framerate directly.
+        float framerate = 30f;
+        Match framerateMatch = Regex.Match(jsonString, "\"framerate\"\\s*:\\s*([0-9.]+)");
+        if (framerateMatch.Success)
+        {
+            framerate = float.Parse(framerateMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+        }
+        material.SetFloat("_UseTime", 1f);
+        material.SetFloat("_speed", framerate / 30f);
     }
 
     [System.Serializable]
