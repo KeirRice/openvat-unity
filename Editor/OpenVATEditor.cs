@@ -7,7 +7,15 @@ using System.Linq;
 
 public class OpenVATEditor : EditorWindow
 {
+    private enum MaterialType
+    {
+        Auto,    // Decoder when a basecolor texture is present, otherwise Basic
+        Decoder, // openVAT_decoder: PBR texture inputs
+        Basic    // openVAT_decoder_basic: VAT only
+    }
+
     private string folderPath = "Assets/OpenVATContent";
+    private MaterialType materialType = MaterialType.Auto;
 
     [MenuItem("Tools/OpenVAT Editor")]
     public static void ShowWindow()
@@ -20,6 +28,7 @@ public class OpenVATEditor : EditorWindow
         GUILayout.Label("OpenVAT Content Importer", EditorStyles.boldLabel);
 
         folderPath = EditorGUILayout.TextField("Folder Path", folderPath);
+        materialType = (MaterialType)EditorGUILayout.EnumPopup("Material Type", materialType);
 
         if (GUILayout.Button("Process OpenVAT Content"))
         {
@@ -83,7 +92,9 @@ public class OpenVATEditor : EditorWindow
 
         // Create material
         string materialPath = Path.Combine(folderPath, Path.GetFileNameWithoutExtension(modelPath) + "_mat.mat");
-        Material material = new Material(Shader.Find(basecolorPath != null ? "Shader Graphs/openVAT_decoder" : "Shader Graphs/openVAT_decoder_basic"));
+        bool useDecoder = materialType == MaterialType.Decoder
+            || (materialType == MaterialType.Auto && basecolorPath != null);
+        Material material = new Material(Shader.Find(useDecoder ? "Shader Graphs/openVAT_decoder" : "Shader Graphs/openVAT_decoder_basic"));
 
         material.SetTexture("_openVAT_main", AssetDatabase.LoadAssetAtPath<Texture2D>(vatTexturePath));
         if (vnrmTexturePath != null)
