@@ -9,8 +9,8 @@ public class OpenVATEditor : EditorWindow
 {
     private enum MaterialType
     {
-        Auto,    // Decoder when a basecolor texture is present, otherwise Basic
-        Decoder, // openVAT_decoder: PBR texture inputs
+        Auto,    // PBR when a basecolor texture is present, otherwise Basic
+        PBR,     // openVAT_decoder: PBR texture inputs
         Basic    // openVAT_decoder_basic: VAT only
     }
 
@@ -92,9 +92,9 @@ public class OpenVATEditor : EditorWindow
 
         // Create material
         string materialPath = Path.Combine(folderPath, Path.GetFileNameWithoutExtension(modelPath) + "_mat.mat");
-        bool useDecoder = materialType == MaterialType.Decoder
+        bool usePBR = materialType == MaterialType.PBR
             || (materialType == MaterialType.Auto && basecolorPath != null);
-        Material material = new Material(Shader.Find(useDecoder ? "Shader Graphs/openVAT_decoder" : "Shader Graphs/openVAT_decoder_basic"));
+        Material material = new Material(Shader.Find(usePBR ? "Shader Graphs/openVAT_decoder" : "Shader Graphs/openVAT_decoder_basic"));
 
         material.SetTexture("_openVAT_main", AssetDatabase.LoadAssetAtPath<Texture2D>(vatTexturePath));
         if (vnrmTexturePath != null)
