@@ -58,12 +58,14 @@ public class OpenVATEditor : EditorWindow
         string vatTexturePath = vatTextures[0];
         string jsonPath = jsonFiles[0];
 
-        // Re-import VAT and optional textures with correct settings
-        ImportTexture(vatTexturePath, false);
-        string vnrmTexturePath = Directory.GetFiles(folderPath, "*_vnrm.png").Length > 0 ? Directory.GetFiles(folderPath, "*_vnrm.png")[0] : null;
+        // Re-import VAT and optional normal textures; OpenVATTexturePostprocessor applies their settings
+        AssetDatabase.ImportAsset(vatTexturePath, ImportAssetOptions.ForceUpdate);
+        string vnrmTexturePath = Directory.GetFiles(folderPath, "*_vnrm.png")
+            .Concat(Directory.GetFiles(folderPath, "*_vnrm.exr"))
+            .FirstOrDefault();
         if (vnrmTexturePath != null)
         {
-            ImportTexture(vnrmTexturePath, false);
+            AssetDatabase.ImportAsset(vnrmTexturePath, ImportAssetOptions.ForceUpdate);
         }
 
         // Re-import PBR textures with correct settings
@@ -76,7 +78,7 @@ public class OpenVATEditor : EditorWindow
 
         if (normalPath != null)
         {
-            ImportTexture(normalPath, true);
+            ImportNormalMap(normalPath);
         }
 
         // Create material
@@ -88,6 +90,8 @@ public class OpenVATEditor : EditorWindow
         {
             material.SetTexture("_openVAT_nrml", AssetDatabase.LoadAssetAtPath<Texture2D>(vnrmTexturePath));
         }
+        // A separate normal texture means normals are not packed into the VAT
+        material.SetFloat("_UsePackedNormals", vnrmTexturePath != null ? 0f : 1f);
 
         SetJSONParameters(material, jsonPath, vatTexturePath);
 
@@ -136,32 +140,13 @@ public class OpenVATEditor : EditorWindow
         EditorSceneManager.MarkAllScenesDirty();
     }
 
-    private void ImportTexture(string path, bool isNormalMap)
+    private void ImportNormalMap(string path)
     {
         TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
         if (importer == null) return;
 
-        importer.textureType = isNormalMap ? TextureImporterType.NormalMap : TextureImporterType.Default;
-        importer.sRGBTexture = false;
-        importer.filterMode = FilterMode.Point;
-        importer.textureCompression = TextureImporterCompression.Uncompressed;
-        importer.mipmapEnabled = false;
-
-        // Set max texture size
-        Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-        if (tex != null)
-            importer.maxTextureSize = Mathf.Max(tex.width, tex.height);
-
-        // Set format based on source (8/16/32 bit)
-        importer.textureCompression = TextureImporterCompression.Uncompressed;
-        importer.SetPlatformTextureSettings(new TextureImporterPlatformSettings
-        {
-            overridden = true,
-            maxTextureSize = importer.maxTextureSize,
-            // format = GetTextureFormat(tex)
-        });
-
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+        importer.textureType = TextureImporterType.NormalMap;
+        importer.SaveAndReimport();
     }
 
     private string GetPBRTexturePath(params string[] keywords)
