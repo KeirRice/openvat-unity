@@ -92,17 +92,26 @@ public class OpenVATEditor : EditorWindow
             ImportNormalMap(normalPath);
         }
 
-        // Create material
+        // Create the material, or update an existing one in place so it keeps its GUID and
+        // every reference to it (prefabs, scenes) stays assigned
         string materialPath = Path.Combine(folderPath, Path.GetFileNameWithoutExtension(modelPath) + "_mat.mat");
         bool usePBR = materialType == MaterialType.PBR
             || (materialType == MaterialType.Auto && basecolorPath != null);
-        Material material = new Material(Shader.Find(usePBR ? "Shader Graphs/openVAT_decoder" : "Shader Graphs/openVAT_decoder_basic"));
+        Shader shader = Shader.Find(usePBR ? "Shader Graphs/openVAT_decoder" : "Shader Graphs/openVAT_decoder_basic");
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+        bool isNewMaterial = material == null;
+        if (isNewMaterial)
+        {
+            material = new Material(shader);
+        }
+        else
+        {
+            material.shader = shader;
+        }
 
         material.SetTexture("_openVAT_main", AssetDatabase.LoadAssetAtPath<Texture2D>(vatTexturePath));
-        if (vnrmTexturePath != null)
-        {
-            material.SetTexture("_openVAT_nrml", AssetDatabase.LoadAssetAtPath<Texture2D>(vnrmTexturePath));
-        }
+        // Cleared when absent so a reused material does not keep a stale normal texture
+        material.SetTexture("_openVAT_nrml", vnrmTexturePath != null ? AssetDatabase.LoadAssetAtPath<Texture2D>(vnrmTexturePath) : null);
         // A separate normal texture means normals are not packed into the VAT
         material.SetFloat("_UsePackedNormals", vnrmTexturePath != null ? 0f : 1f);
 
@@ -133,22 +142,41 @@ public class OpenVATEditor : EditorWindow
             material.SetTexture("_AmbientOcclusion", AssetDatabase.LoadAssetAtPath<Texture2D>(aoPath));
         }
 
-        AssetDatabase.CreateAsset(material, materialPath);
+        if (isNewMaterial)
+        {
+            AssetDatabase.CreateAsset(material, materialPath);
+        }
+        else
+        {
+            EditorUtility.SetDirty(material);
+        }
         AssetDatabase.SaveAssets();
 
-        // Add FBX to scene and apply material
-        GameObject fbxObject = Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(modelPath));
-
-        // Ensure the object is at the origin
-        fbxObject.transform.position = Vector3.zero;
-        //fbxObject.transform.rotation = Quaternion.identity;
-
-        fbxObject.GetComponent<Renderer>().sharedMaterial = material;
-
-        // Save as prefab
         string prefabPath = Path.Combine(folderPath, Path.GetFileNameWithoutExtension(modelPath) + ".prefab");
-        PrefabUtility.SaveAsPrefabAsset(fbxObject, prefabPath);
-        DestroyImmediate(fbxObject);
+        if (AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) != null)
+        {
+            // Update the existing prefab in place so its GUID and object IDs survive, keeping
+            // scene instances and their overrides intact
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
+            prefabRoot.GetComponent<Renderer>().sharedMaterial = material;
+            PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
+            PrefabUtility.UnloadPrefabContents(prefabRoot);
+        }
+        else
+        {
+            // Add FBX to scene and apply material
+            GameObject fbxObject = Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(modelPath));
+
+            // Ensure the object is at the origin
+            fbxObject.transform.position = Vector3.zero;
+            //fbxObject.transform.rotation = Quaternion.identity;
+
+            fbxObject.GetComponent<Renderer>().sharedMaterial = material;
+
+            // Save as prefab
+            PrefabUtility.SaveAsPrefabAsset(fbxObject, prefabPath);
+            DestroyImmediate(fbxObject);
+        }
 
         EditorSceneManager.MarkAllScenesDirty();
     }
