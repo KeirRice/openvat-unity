@@ -210,8 +210,16 @@ public class OpenVATEditor : EditorWindow
 
         RemapData remapData = JsonUtility.FromJson<RemapData>(jsonString);
 
+        // X is swapped to mirror Blender's right-handed data into Unity's left-handed space
         Vector3 minValues = new Vector3(remapData.os_remap.Max[0], remapData.os_remap.Min[1], remapData.os_remap.Min[2]);
         Vector3 maxValues = new Vector3(remapData.os_remap.Min[0], remapData.os_remap.Max[1], remapData.os_remap.Max[2]);
+        if (remapData.space == "unity")
+        {
+            // The decoder scales positions by 0.01 to suit Blender-space FBX meshes, which Unity
+            // imports in centimetres. Unity-space meshes import in metres, so cancel that scale.
+            minValues *= 100f;
+            maxValues *= 100f;
+        }
         float frameCount = remapData.os_remap.Frames;
 
         material.SetVector("_minValues", minValues);
@@ -236,6 +244,7 @@ public class OpenVATEditor : EditorWindow
     private class RemapData
     {
         public OsRemap os_remap;
+        public string space; // "blender" or "unity"; absent in older exports, which are Blender space
     }
 
     [System.Serializable]
