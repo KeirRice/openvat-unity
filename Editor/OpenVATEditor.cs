@@ -116,6 +116,10 @@ public class OpenVATEditor : EditorWindow
         material.SetFloat("_UsePackedNormals", vnrmTexturePath != null ? 0f : 1f);
 
         SetJSONParameters(material, jsonPath, vatTexturePath);
+        if (material.GetFloat("_RelativeNormals") > 0f)
+        {
+            KeepImportedNormals(modelPath);
+        }
 
         if (basecolorPath != null)
         {
@@ -181,6 +185,17 @@ public class OpenVATEditor : EditorWindow
         EditorSceneManager.MarkAllScenesDirty();
     }
 
+    // Relative VAT normals are offsets from the mesh's own normals, so Unity must keep the
+    // exported normals rather than recalculate them
+    private void KeepImportedNormals(string modelPath)
+    {
+        ModelImporter importer = AssetImporter.GetAtPath(modelPath) as ModelImporter;
+        if (importer == null || importer.importNormals == ModelImporterNormals.Import) return;
+
+        importer.importNormals = ModelImporterNormals.Import;
+        importer.SaveAndReimport();
+    }
+
     private void ImportNormalMap(string path)
     {
         TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
@@ -236,6 +251,16 @@ public class OpenVATEditor : EditorWindow
         {
             framerate = float.Parse(framerateMatch.Groups[1].Value, CultureInfo.InvariantCulture);
         }
+        // Relative normals decode as offsets from the mesh normal within the exported range;
+        // older exports have no "normals" entry and use absolute normals
+        bool relativeNormals = remapData.normals != null && remapData.normals.Basis == "relative";
+        material.SetFloat("_RelativeNormals", relativeNormals ? 1f : 0f);
+        if (relativeNormals)
+        {
+            material.SetVector("_nrmMinValues", new Vector3(remapData.normals.Min[0], remapData.normals.Min[1], remapData.normals.Min[2]));
+            material.SetVector("_nrmMaxValues", new Vector3(remapData.normals.Max[0], remapData.normals.Max[1], remapData.normals.Max[2]));
+        }
+
         material.SetFloat("_UseTime", 1f);
         material.SetFloat("_speed", framerate / 30f);
     }
@@ -245,6 +270,15 @@ public class OpenVATEditor : EditorWindow
     {
         public OsRemap os_remap;
         public string space; // "blender" or "unity"; absent in older exports, which are Blender space
+        public NormalRemap normals; // absent in older exports and when normals are not encoded
+    }
+
+    [System.Serializable]
+    private class NormalRemap
+    {
+        public string Basis; // "absolute" or "relative"
+        public float[] Min;
+        public float[] Max;
     }
 
     [System.Serializable]
