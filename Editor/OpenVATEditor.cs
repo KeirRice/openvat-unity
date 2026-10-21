@@ -225,10 +225,14 @@ public class OpenVATEditor : EditorWindow
 
         RemapData remapData = JsonUtility.FromJson<RemapData>(jsonString);
 
-        // X is swapped to mirror Blender's right-handed data into Unity's left-handed space
-        Vector3 minValues = new Vector3(remapData.os_remap.Max[0], remapData.os_remap.Min[1], remapData.os_remap.Min[2]);
-        Vector3 maxValues = new Vector3(remapData.os_remap.Min[0], remapData.os_remap.Max[1], remapData.os_remap.Max[2]);
-        if (remapData.space == "unity")
+        // Unity mirrors X when it imports the mesh. Unity-space exports already store positions and
+        // normals in that mirrored frame; for Blender-space data, negating the X range mirrors the
+        // decoded X to match
+        bool unitySpace = remapData.space == "unity";
+        Vector3 mirror = new Vector3(unitySpace ? 1f : -1f, 1f, 1f);
+        Vector3 minValues = Vector3.Scale(ToVector3(remapData.os_remap.Min), mirror);
+        Vector3 maxValues = Vector3.Scale(ToVector3(remapData.os_remap.Max), mirror);
+        if (unitySpace)
         {
             // The decoder scales positions by 0.01 to suit Blender-space FBX meshes, which Unity
             // imports in centimetres. Unity-space meshes import in metres, so cancel that scale.
@@ -251,18 +255,23 @@ public class OpenVATEditor : EditorWindow
         {
             framerate = float.Parse(framerateMatch.Groups[1].Value, CultureInfo.InvariantCulture);
         }
-        // Relative normals decode as offsets from the mesh normal within the exported range;
-        // older exports have no "normals" entry and use absolute normals
-        bool relativeNormals = remapData.normals != null && remapData.normals.Basis == "relative";
+        // Normals decode within the exported range, mirrored like positions. Relative normals are
+        // offsets from the mesh normal; older exports have no "normals" entry and are absolute -1..1
+        bool hasNormalRange = remapData.normals != null && remapData.normals.Min != null && remapData.normals.Min.Length == 3;
+        bool relativeNormals = hasNormalRange && remapData.normals.Basis == "relative";
+        Vector3 normalMin = hasNormalRange ? ToVector3(remapData.normals.Min) : -Vector3.one;
+        Vector3 normalMax = hasNormalRange ? ToVector3(remapData.normals.Max) : Vector3.one;
         material.SetFloat("_RelativeNormals", relativeNormals ? 1f : 0f);
-        if (relativeNormals)
-        {
-            material.SetVector("_nrmMinValues", new Vector3(remapData.normals.Min[0], remapData.normals.Min[1], remapData.normals.Min[2]));
-            material.SetVector("_nrmMaxValues", new Vector3(remapData.normals.Max[0], remapData.normals.Max[1], remapData.normals.Max[2]));
-        }
+        material.SetVector("_nrmMinValues", Vector3.Scale(normalMin, mirror));
+        material.SetVector("_nrmMaxValues", Vector3.Scale(normalMax, mirror));
 
         material.SetFloat("_UseTime", 1f);
         material.SetFloat("_speed", framerate / 30f);
+    }
+
+    private static Vector3 ToVector3(float[] values)
+    {
+        return new Vector3(values[0], values[1], values[2]);
     }
 
     [System.Serializable]
