@@ -1,3 +1,4 @@
+using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.IO;
@@ -39,7 +40,7 @@ public class OpenVATContentPostprocessor : AssetPostprocessor
         pending.Clear();
         foreach (string path in paths)
         {
-            OpenVATContentProcessor.Process(path, OpenVATSettings.instance.DefaultMaterialType);
+            TryProcess(path, false);
         }
     }
 
@@ -50,8 +51,22 @@ public class OpenVATContentPostprocessor : AssetPostprocessor
             string path = AssetDatabase.GUIDToAssetPath(guid);
             if (OpenVATContentProcessor.IsRemapInfo(path))
             {
-                OpenVATContentProcessor.Process(path, OpenVATSettings.instance.DefaultMaterialType, reimportTextures: true, logMissing: true);
+                TryProcess(path, true);
             }
+        }
+    }
+
+    // One broken export must not stop the others
+    private static void TryProcess(string path, bool manual)
+    {
+        try
+        {
+            OpenVATContentProcessor.Process(path, OpenVATSettings.instance.DefaultMaterialType, reimportTextures: manual, logMissing: manual);
+        }
+        catch (System.Exception exception)
+        {
+            Debug.LogError($"OpenVAT: failed to process {path}");
+            Debug.LogException(exception);
         }
     }
 }

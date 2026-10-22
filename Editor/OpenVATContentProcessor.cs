@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 using System.IO;
 using System.Linq;
 using System.Globalization;
@@ -53,6 +55,13 @@ public static class OpenVATContentProcessor
             {
                 Debug.LogError($"OpenVAT: {remapInfoPath} needs {baseName}.fbx/.glb/.gltf and {baseName}_vat.exr/.png beside it");
             }
+            return false;
+        }
+
+        GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
+        if (model == null || model.GetComponentsInChildren<Renderer>(true).Length == 0)
+        {
+            Debug.LogError($"OpenVAT: {modelPath} contains no mesh, so {baseName} was not processed. Re-export it from Blender (an empty model usually means the object could not be selected at export)");
             return false;
         }
 
@@ -161,27 +170,46 @@ public static class OpenVATContentProcessor
             // Update the existing prefab in place so its GUID and object IDs survive, keeping
             // scene instances and their overrides intact
             GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
-            prefabRoot.GetComponent<Renderer>().sharedMaterial = material;
-            PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
-            PrefabUtility.UnloadPrefabContents(prefabRoot);
+            try
+            {
+                AssignMaterial(prefabRoot, material);
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
         }
         else
         {
-            // Add FBX to scene and apply material
-            GameObject fbxObject = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(modelPath));
-
-            // Ensure the object is at the origin
-            fbxObject.transform.position = Vector3.zero;
-
-            fbxObject.GetComponent<Renderer>().sharedMaterial = material;
-
-            // Save as prefab
-            PrefabUtility.SaveAsPrefabAsset(fbxObject, prefabPath);
-            Object.DestroyImmediate(fbxObject);
+            // Build the prefab in a preview scene so nothing is left in the open scene, even on failure
+            Scene previewScene = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                GameObject instance = Object.Instantiate(model);
+                SceneManager.MoveGameObjectToScene(instance, previewScene);
+                instance.name = baseName;
+                instance.transform.position = Vector3.zero;
+                AssignMaterial(instance, material);
+                PrefabUtility.SaveAsPrefabAsset(instance, prefabPath);
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(previewScene);
+            }
         }
 
         Debug.Log($"OpenVAT: processed {baseName} into {materialPath} and {prefabPath}");
         return true;
+    }
+
+    // The mesh may sit on the model's root or on a child, depending on how the model imports
+    private static void AssignMaterial(GameObject root, Material material)
+    {
+        foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+        {
+            renderer.sharedMaterial = material;
+        }
     }
 
     private static string FindFile(string folder, string name, string[] extensions)
